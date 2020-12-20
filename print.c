@@ -27,6 +27,7 @@ void print_error(ushort error) {
     else if (error == ERR_NO_USR) printf("No such user.\n");
     else if (error == ERR_SOCK) printf("Server socker could not be created.\n");
     else if (error == ERR_CREATE_FILE) printf("Fail to create the file.\n");
+    else if (error == ERR_ERR_TMOUT) printf("ERROR packet lost.\n");
     else if (error == ERR_NO_FILE) printf("No such local file.\n");
     else printf("Unknown error.\n");
 }

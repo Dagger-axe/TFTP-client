@@ -27,6 +27,9 @@ typedef struct TFTP_PACKET {
 } TFTP_PACKET;
 const int TFTP_PKT_SIZE = sizeof(TFTP_PACKET);
 #define TFTP_TIMEOUT 1000
+#define TFTP_ERROR_TIMEOUT 10000
+#define TFTP_END_SIZE 516
+#define TFTP_FILE_SIZE 512
 
 /* 文件传输模式 */
 #define NETASCII 0
