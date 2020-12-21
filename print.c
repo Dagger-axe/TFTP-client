@@ -34,20 +34,15 @@ void print_error(ushort error) {
     else printf("Unknown error.\n");
 }
 
-void print_result(FILE *plog, char *filename, char *ip_addr, int mode, double bps) {
+void print_result(char *filename, char *ip_addr, int mode, ll size, int tm, int lost_size, double bps) {
     printf("---------------RESULT---------------\n");
     printf("File name:           %s\n", filename);
     printf("IP address:          %s\n", ip_addr);
     if (mode == NETASCII)  printf("Transmission mode:   NETASCII\n");
     else printf("Transmission mode:   OCTET\n");
-    printf("Transmission speed:  %.2lfbps\n", bps);
+    printf("File total size:     %lld\n", size);
+    printf("Total time:          %dms\n", tm);
+    printf("Lost packet:         %d\n", lost_size);
+    printf("Transmission speed:  %.2lfKbps\n", bps);
     printf("------------------------------------\n");
-    
-    fprintf(plog, "---------------RESULT---------------\n");
-    fprintf(plog, "File name:           %s\n", filename);
-    fprintf(plog, "IP address:          %s\n", ip_addr);
-    if (mode == NETASCII)  fprintf(plog, "Transmission mode:   NETASCII\n");
-    else fprintf(plog, "Transmission mode:   OCTET\n");
-    fprintf(plog, "Transmission speed:  %.2lfbps\n", bps);
-    fprintf(plog, "------------------------------------\n");
 }
