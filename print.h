@@ -14,6 +14,8 @@ typedef unsigned short ushort;
 #define ERR_CREATE_FILE 11  //下载时本地创建同名文件失败
 #define ERR_ERR_TMOUT   12  //回传的ERROR包丢失
 #define ERR_NO_FILE     13  //本地没有该指定文件
+#define ERR_SOCKET_ERR  14  //SOCKET_ERROR
 
 void print_help();
 void print_error(ushort err_type);
+void print_result(FILE *plog, char *filename, char *ip_addr, int mode, double bps);
