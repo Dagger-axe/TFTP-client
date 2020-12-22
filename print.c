@@ -6,11 +6,11 @@
 void print_help() {
     printf("Usage:\t  tftp [-h] <type> <filepath> <IP>\n\n");
     printf("-h\t  Shows this usage instructions\n");
-    printf("Type:\n");
-    printf("\t  -ra\tRequests a read in NETASCII mode\n");
-    printf("\t  -ro\tRequests a read in OCTET mode\n");
-    printf("\t  -wa\tRequests a write in NETASSCII mode\n");
-    printf("\t  -wo\tRequests a write in OCTET mode\n");
+    printf("type:\n");
+    printf("   -ra\t  Requests a read in NETASCII mode\n");
+    printf("   -ro\t  Requests a read in OCTET mode\n");
+    printf("   -wa\t  Requests a write in NETASSCII mode\n");
+    printf("   -wo\t  Requests a write in OCTET mode\n");
     printf("filepath  Path to file to read or write\n");
     printf("IP\t  Target IP Address\n");
 }
@@ -31,6 +31,7 @@ void print_error(ushort error) {
     else if (error == ERR_ERR_TMOUT) printf("ERROR packet lost.\n");
     else if (error == ERR_NO_FILE) printf("No such local file.\n");
     else if (error == ERR_SOCKET_ERR) printf("SOCKET ERROR.\n");
+    else if (error == ERR_NETASCII) printf("Can\'t send by NETASCII mode.\n");
     else printf("Unknown error.\n");
 }
 
@@ -43,18 +44,13 @@ void print_begin(char *filename, char *ip_addr, int mode) {
     putchar('\n');
 }
 
-void print_snd_speed(int size, int clk) {
+void print_speed(int snd, int rcv, int clk) {
+    if (snd < 0) snd = 0;
+    if (rcv < 0) rcv = 0;
     if (clk < 1) clk = 1;
-    if (size < 0) size = 0;
-    double res = (double)size / (double)clk;
-    printf("\rSend speed:%-6.2lfKbps", res);
-}
-
-void print_rcv_speed(int size, int clk) {
-    if (clk < 1) clk = 1;
-    if (size < 0) size = 0;
-    double res = (double)size / (double)clk;
-    printf("      Receive speed:%-6.2lfKbps", res);
+    double res_snd = (double)snd / (double)clk;
+    double res_rcv = (double)rcv / (double)clk;
+    printf("\rSend speed:%-6.2lfKbps      Receive speed:%-6.2lfKbps", res_snd, res_rcv);
 }
 
 void print_size(int file, int snd, int rcv, int lost) {

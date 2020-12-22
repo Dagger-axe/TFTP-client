@@ -15,11 +15,11 @@ typedef unsigned short ushort;
 #define ERR_ERR_TMOUT   12  //回传的ERROR包丢失
 #define ERR_NO_FILE     13  //本地没有该指定文件
 #define ERR_SOCKET_ERR  14  //SOCKET_ERROR
+#define ERR_NETASCII    15  //不可用netascii模式传输
 
 void print_help();
 void print_error(ushort err_type);
 void print_begin(char *filename, char *ip_addr, int mode);
-void print_snd_speed(int size, int clk);
-void print_rcv_speed(int size, int clk);
+void print_speed(int snd, int rcv, int clk);
 void print_size(int file, int snd, int rcv, int lost);
 void print_result(int tm, double bps);
