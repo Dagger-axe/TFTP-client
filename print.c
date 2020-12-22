@@ -17,7 +17,7 @@ void print_help() {
 
 /* 错误信息 */
 void print_error(ushort error) {
-    printf("[ERROR]***");
+    printf("\n[ERROR]***");
     if (error == ERR_NOT_DEF) printf("Not defined error, see error message.\n");
     else if (error == ERR_NOT_FD) printf("File not found.\n");
     else if (error == ERR_ACC_VLT) printf("Access violation.\n");
@@ -34,15 +34,35 @@ void print_error(ushort error) {
     else printf("Unknown error.\n");
 }
 
-void print_result(char *filename, char *ip_addr, int mode, ll size, int tm, int lost_size, double bps) {
-    printf("---------------RESULT---------------\n");
+void print_begin(char *filename, char *ip_addr, int mode) {
+    putchar('\n');
     printf("File name:           %s\n", filename);
     printf("IP address:          %s\n", ip_addr);
     if (mode == NETASCII)  printf("Transmission mode:   NETASCII\n");
     else printf("Transmission mode:   OCTET\n");
-    printf("File total size:     %lld\n", size);
+    putchar('\n');
+}
+
+void print_snd_speed(int size, int clk) {
+    if (clk < 1) clk = 1;
+    if (size < 0) size = 0;
+    double res = (double)size / (double)clk;
+    printf("\rSend speed:%-6.2lfKbps", res);
+}
+
+void print_rcv_speed(int size, int clk) {
+    if (clk < 1) clk = 1;
+    if (size < 0) size = 0;
+    double res = (double)size / (double)clk;
+    printf("      Receive speed:%-6.2lfKbps", res);
+}
+
+void print_size(int file, int snd, int rcv, int lost) {
+    printf("\rSend packet:%d   Receive packet:%d   Lost packet:%d   \n", snd, rcv, lost);
+    printf("File total size:     %dB\n", file);
+}
+
+void print_result(int tm, double bps) {    
     printf("Total time:          %dms\n", tm);
-    printf("Lost packet:         %d\n", lost_size);
     printf("Transmission speed:  %.2lfKbps\n", bps);
-    printf("------------------------------------\n");
 }

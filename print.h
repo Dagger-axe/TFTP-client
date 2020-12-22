@@ -18,4 +18,8 @@ typedef unsigned short ushort;
 
 void print_help();
 void print_error(ushort err_type);
-void print_result(char *filename, char *ip_addr, int mode, ll size, int tm, int lost_size, double bps);
+void print_begin(char *filename, char *ip_addr, int mode);
+void print_snd_speed(int size, int clk);
+void print_rcv_speed(int size, int clk);
+void print_size(int file, int snd, int rcv, int lost);
+void print_result(int tm, double bps);

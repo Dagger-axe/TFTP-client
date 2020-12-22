@@ -29,6 +29,7 @@ typedef struct TFTP_PACKET {
 #define TFTP_ERROR_TIMEOUT 10000
 #define TFTP_END_SIZE 516
 #define TFTP_FILE_SIZE 512
+#define FLUSH_TIME 1000
 
 /* 文件传输模式 */
 #define NETASCII 0
