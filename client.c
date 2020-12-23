@@ -11,6 +11,9 @@ int sockfd;  //套接字句柄
 struct sockaddr_in server;
 struct sockaddr *server_ptr = (struct sockaddr*)&server;  //要求强制转换成sockaddr结构体后进入函数
 int server_len = sizeof(struct sockaddr_in);  //结构体sockaddr_in的大小
+struct sockaddr_in receive;
+struct sockadd *receive_ptr = (struct sockaddr_in*)&receive;
+int receive_len = sizeof(struct sockaddr_in);
 int rcv_timeout = TFTP_TIMEOUT;
 int snd_timeout = TFTP_TIMEOUT;
 
@@ -93,7 +96,15 @@ void download(ushort mode, char *filename, char *ip_addr) {
             temp_snd2 += snd_ret;
         }
 
-        rcv_ret = recvfrom(sockfd, &rcv_pkt, TFTP_PKT_SIZE, 0, server_ptr, &server_len);  //尝试接收包
+        if (block == 1) {
+            rcv_ret = recvfrom(sockfd, &rcv_pkt, TFTP_PKT_SIZE, 0, receive_ptr, &receive_len);  //尝试接收包
+            if (rcv_ret > 0) rcv_size++;
+        }
+        else do {
+            rcv_ret = recvfrom(sockfd, &rcv_pkt, TFTP_PKT_SIZE, 0, receive_ptr, &receive_len);  //尝试接收包
+            //printf("port:%d\n", receive.sin_port);
+            if (rcv_ret > 0) rcv_size++;
+        } while (rcv_ret > 0 && receive.sin_port != server.sin_port);
         if (rcv_ret == SOCKET_ERROR) {
             if (WSAGetLastError() == WSAETIMEDOUT) {  //重传
                 lost_size++;                
@@ -105,9 +116,14 @@ void download(ushort mode, char *filename, char *ip_addr) {
                 fclose(pfile); fclose(plog);
                 return;
             }
-        }        
-        rcv_size++;
+        }
         rcv_clk = clock();
+        
+        /* 记录端口号 */
+        if (rcv_pkt.block == htons(1) && rcv_pkt.opcode == htons(TFTP_DATA)) {
+            server.sin_port = receive.sin_port;
+            //printf("first port:%d\n", receive.sin_port);
+        }
 
         if (clock() - flush_rcv_clk > FLUSH_TIME) {  //更新实时流量器
             if (rcv_ret > 0) temp_rcv += rcv_ret;
@@ -125,7 +141,7 @@ void download(ushort mode, char *filename, char *ip_addr) {
         }
         else if (rcv_ret >= 4 && rcv_pkt.opcode == htons(TFTP_ERROR)) {  //TFTP错误
             fprintf(plog, "[ERROR] %s.\n", rcv_pkt.data);
-            printf("[ERROR]***%s.\n", rcv_pkt.data);
+            printf("\n[ERROR]***%s.\n", rcv_pkt.data);
             fclose(pfile); fclose(plog);
             return;
         }
@@ -134,7 +150,7 @@ void download(ushort mode, char *filename, char *ip_addr) {
                 fprintf(plog, "[INFO] Receive a DATA packet of block %d.\n", block);
                 fwrite(rcv_pkt.data, 1, rcv_ret - 4, pfile);
                 file_size += rcv_ret - 4;
-                printf("rcv_ret:%d   file_size:%d\n", rcv_ret, file_size);
+                //printf("rcv_ret:%d   file_size:%d\n", rcv_ret, file_size);
                 double bps = (double)rcv_bytes / (double)(clock() - clk_start);                
                 fclose(pfile);
                 /* 查看NETASCII模式下文件正确性 */
@@ -161,7 +177,7 @@ void download(ushort mode, char *filename, char *ip_addr) {
             fprintf(plog, "[INFO] Received a DATA packet of block %d.\n", block);
             fwrite(rcv_pkt.data, 1, rcv_ret - 4, pfile);
             file_size += rcv_ret - 4;
-            printf("rcv_ret:%d   file_size:%d\n", rcv_ret, file_size);
+            //printf("rcv_ret:%d   file_size:%d\n", rcv_ret, file_size);
             fok = 0;
             snd_pkt.opcode = htons(TFTP_ACK);
             snd_pkt.block = rcv_pkt.block;
@@ -229,7 +245,14 @@ void upload(ushort mode, char *filename, char *ip_addr) {
             temp_snd2 += snd_ret;
         }
 
-        rcv_ret = recvfrom(sockfd, &rcv_pkt, TFTP_PKT_SIZE, 0, server_ptr, &server_len);  //尝试接收包
+        if (block == 0) {
+            rcv_ret = recvfrom(sockfd, &rcv_pkt, TFTP_PKT_SIZE, 0, receive_ptr, &receive_len);  //尝试接收包
+            if (rcv_ret > 0) rcv_size++;
+        }
+        else do {
+            rcv_ret = recvfrom(sockfd, &rcv_pkt, TFTP_PKT_SIZE, 0, receive_ptr, &receive_len);  //尝试接收包
+            if (rcv_ret > 0) rcv_size++;
+        } while (rcv_ret > 0 && receive.sin_port != server.sin_port);
         if (rcv_ret == SOCKET_ERROR) {
             if (WSAGetLastError() == WSAETIMEDOUT) {  //重传
                 lost_size++;                
@@ -242,8 +265,12 @@ void upload(ushort mode, char *filename, char *ip_addr) {
                 return;
             }
         }
-        rcv_size++;
         rcv_clk = clock();
+
+        /* 记录端口 */
+        if (rcv_pkt.block == htons(0) && rcv_pkt.opcode == htons(TFTP_ACK)) {
+            server.sin_port = receive.sin_port;
+        }
 
         if (clock() - flush_rcv_clk > FLUSH_TIME) {  //更新实时流量器
             if (rcv_ret > 0) temp_rcv += rcv_ret;
@@ -260,7 +287,7 @@ void upload(ushort mode, char *filename, char *ip_addr) {
         }
         else if (rcv_ret >= 4 && rcv_pkt.opcode == htons(TFTP_ERROR)) {  //TFTP错误
             fprintf(plog, "[ERROR] %s.\n", rcv_pkt.data);
-            printf("[ERROR]***%s.\n", rcv_pkt.data);
+            printf("\n[ERROR]***%s.\n", rcv_pkt.data);
             fclose(pfile); fclose(plog);
             return;
         }

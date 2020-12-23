@@ -17,8 +17,7 @@ typedef struct TFTP_PACKET {
         ushort error_code;  //错误编号
         char filename[2];   //filename的前两个字节
     };
-    /* 
-     * RRQ和WRQ可变长filename的剩余部分及传输模式字段；
+    /* RRQ和WRQ可变长filename的剩余部分及传输模式字段；
      * 数据包的data字段；
      * ACK包的空字段；
      * 错误包的错误信息字段
