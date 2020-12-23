@@ -81,7 +81,7 @@ typedef struct TFTP_PACKET {
 } TFTP_PACKET;
 ```
 
-&emsp;&emsp;第3-4个字节：对于`ACK`及`DATA`包，记录数据块编号；对于`ERROR`包，记录错误编号；对于`RRQ`及`WRQ`包，记录部分传输文件名信息。因此该字段使用`union`结构实现。
+&emsp;&emsp;第3至4字节：对于`ACK`及`DATA`包，记录数据块编号；对于`ERROR`包，记录错误编号；对于`RRQ`及`WRQ`包，记录部分传输文件名信息。因此该字段使用`union`结构实现。
 
 ### client.c
 
@@ -109,6 +109,7 @@ typedef struct TFTP_PACKET {
 
 ```bash
 tc qdisc add dev wlp3s0 root netem loss 30%
+tc qdisc add dev eth0 root netem delay 100ms 10ms 30%
 ```
 
 #### 结果

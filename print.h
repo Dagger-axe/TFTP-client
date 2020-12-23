@@ -16,6 +16,7 @@ typedef unsigned short ushort;
 #define ERR_NO_FILE     13  //本地没有该指定文件
 #define ERR_SOCKET_ERR  14  //SOCKET_ERROR
 #define ERR_NETASCII    15  //不可用netascii模式传输
+#define ERR_TIMEOUT     16  //回收的包超时太多
 
 void print_help();
 void print_error(ushort err_type);

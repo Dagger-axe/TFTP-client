@@ -64,14 +64,19 @@ void download(ushort mode, char *filename, char *ip_addr) {
     /* send request 创建首个用户连接的RRQ数据包 */
     TFTP_PACKET snd_pkt;  //TFTP发送的数据包
     snd_pkt.opcode = htons(TFTP_RRQ);  //TFTP包类型
-    int fok = sprintf(snd_pkt.filename, "%s%c%s%c", filename, 0, AMODE, 0);
+    int fok;
+    if (mode == NETASCII) fok = sprintf(snd_pkt.filename, "%s%c%s%c", filename, 0, AMODE, 0);
+    else if (mode == OCTET) fok = sprintf(snd_pkt.filename, "%s%c%s%c", filename, 0, OMODE, 0);
     /* receive data 接收应答的数据 */
     TFTP_PACKET rcv_pkt;  //接收的数据包
     ushort block = 1;
+    /* 数据记录 */
     int snd_size = 0, rcv_size = 0, lost_size = 0, file_size = 0;
     int snd_ret = 0, rcv_ret = 0;
     int temp_snd = 0, temp_rcv = 0, temp_snd2 = 0;  //记录flush时间段内的传输与接收字节数
-    clock_t rcv_clk = clock(), flush_snd_clk = clock(), flush_rcv_clk = clock();
+    clock_t flush_snd_clk = clock(), flush_rcv_clk = clock();
+    /* 实时重传次数 */
+    int temp_rtt_num = 0, last_rtt_num = TFTP_TIMEOUT_NUM;  //一个记录最新的重传次数，一个记录上次的重传次数
     while (1) {
         snd_ret = sendto(sockfd, &snd_pkt, fok + 4, 0, server_ptr, server_len);  //发送请求
         snd_size++;
@@ -84,7 +89,7 @@ void download(ushort mode, char *filename, char *ip_addr) {
         if (snd_pkt.opcode == TFTP_RRQ) fprintf(plog, "[INFO] Send a RRQ packet.\n");  //记录日志
         else fprintf(plog, "[INFO] Send a ACK packet of block %d.\n", block);
 
-        if (clock() - flush_snd_clk > FLUSH_TIME) {  //更新实时流量器
+        if (clock() - flush_rcv_clk > FLUSH_TIME) {  //更新实时流量器
             if (snd_ret > 0) temp_snd += snd_ret;            
             temp_snd2 = temp_snd;
             print_speed(temp_snd, temp_rcv, clock() - flush_snd_clk);
@@ -102,11 +107,17 @@ void download(ushort mode, char *filename, char *ip_addr) {
         }
         else do {
             rcv_ret = recvfrom(sockfd, &rcv_pkt, TFTP_PKT_SIZE, 0, receive_ptr, &receive_len);  //尝试接收包
-            //printf("port:%d\n", receive.sin_port);
             if (rcv_ret > 0) rcv_size++;
+            if (rcv_ret >= 4 && rcv_pkt.opcode == htons(TFTP_DATA) && rcv_pkt.block < htons(block)) continue;
         } while (rcv_ret > 0 && receive.sin_port != server.sin_port);
         if (rcv_ret == SOCKET_ERROR) {
             if (WSAGetLastError() == WSAETIMEDOUT) {  //重传
+                temp_rtt_num++;
+                if (temp_rtt_num > (last_rtt_num << 1)) {  //当重传次数超过上次记录的数据后
+                    print_error(ERR_TIMEOUT);
+                    fclose(pfile); fclose(plog);
+                    return;
+                }
                 lost_size++;                
                 fprintf(plog, "[WARNING] Timeout retransmission.\n");
                 continue;
@@ -117,12 +128,13 @@ void download(ushort mode, char *filename, char *ip_addr) {
                 return;
             }
         }
-        rcv_clk = clock();
+        //当不再重传时更新当前的重传字数
+        last_rtt_num = temp_rtt_num > TFTP_TIMEOUT_NUM ? temp_rtt_num : TFTP_TIMEOUT_NUM;
+        temp_rtt_num = 0; 
         
         /* 记录端口号 */
         if (rcv_pkt.block == htons(1) && rcv_pkt.opcode == htons(TFTP_DATA)) {
             server.sin_port = receive.sin_port;
-            //printf("first port:%d\n", receive.sin_port);
         }
 
         if (clock() - flush_rcv_clk > FLUSH_TIME) {  //更新实时流量器
@@ -137,6 +149,7 @@ void download(ushort mode, char *filename, char *ip_addr) {
         if (rcv_ret > 0) rcv_bytes += rcv_ret;  //增加接收的数据长度
         if (rcv_ret > 0 && rcv_ret < 4) {  //bad packet，重传请求
             fprintf(plog, "[WARNING] Bad packet.\n");
+            temp_rtt_num++;
             continue;
         }
         else if (rcv_ret >= 4 && rcv_pkt.opcode == htons(TFTP_ERROR)) {  //TFTP错误
@@ -150,9 +163,8 @@ void download(ushort mode, char *filename, char *ip_addr) {
                 fprintf(plog, "[INFO] Receive a DATA packet of block %d.\n", block);
                 fwrite(rcv_pkt.data, 1, rcv_ret - 4, pfile);
                 file_size += rcv_ret - 4;
-                //printf("rcv_ret:%d   file_size:%d\n", rcv_ret, file_size);
-                double bps = (double)rcv_bytes / (double)(clock() - clk_start);                
-                fclose(pfile);
+                double bps = (double)rcv_bytes / (double)(clock() - clk_start);
+                fclose(pfile); 
                 /* 查看NETASCII模式下文件正确性 */
                 if (mode == NETASCII) {
                     if (is_netascii(filename)) {
@@ -169,7 +181,7 @@ void download(ushort mode, char *filename, char *ip_addr) {
                 }
                 print_size(file_size, snd_size, rcv_size, lost_size);
                 print_result(clock() - clk_start, bps);
-                fprintf(plog, "[INFO] Successfully read.\n");
+                fprintf(plog, "[INFO] Successfully read.\n"); 
                 fclose(plog);
                 return;
             }
@@ -177,18 +189,11 @@ void download(ushort mode, char *filename, char *ip_addr) {
             fprintf(plog, "[INFO] Received a DATA packet of block %d.\n", block);
             fwrite(rcv_pkt.data, 1, rcv_ret - 4, pfile);
             file_size += rcv_ret - 4;
-            //printf("rcv_ret:%d   file_size:%d\n", rcv_ret, file_size);
             fok = 0;
             snd_pkt.opcode = htons(TFTP_ACK);
             snd_pkt.block = rcv_pkt.block;
             block++;
             continue;
-        }
-        else if (clock() - rcv_clk >= TFTP_ERROR_TIMEOUT) {  //回传的ERROR包丢失
-            fprintf(plog, "[ERROR] ERROR packet lost.\n");
-            print_error(ERR_ERR_TMOUT);
-            fclose(pfile); fclose(plog);
-            return;
         }
     } 
 }
@@ -212,14 +217,19 @@ void upload(ushort mode, char *filename, char *ip_addr) {
     /* send request WRQ */
     TFTP_PACKET snd_pkt;  //TFTP发送的数据包
     snd_pkt.opcode = htons(TFTP_WRQ);  //TFTP包类型
-    int fok = sprintf(snd_pkt.filename, "%s%c%s%c", filename, 0, AMODE, 0);
+    int fok;
+    if (mode == NETASCII) fok = sprintf(snd_pkt.filename, "%s%c%s%c", filename, 0, AMODE, 0);
+    else if (mode == OCTET) fok = sprintf(snd_pkt.filename, "%s%c%s%c", filename, 0, OMODE, 0);
     /* receive data 接收应答的数据 */
     TFTP_PACKET rcv_pkt;  //接收的数据包
     ushort block = 0;
+    /* 统计数据 */
     int snd_size = 0, rcv_size = 0, lost_size = 0, file_size = 0;
     int snd_ret = 0, rcv_ret = 0;
     int temp_snd = 0, temp_rcv = 0, temp_snd2 = 0;  //flush时间段内发送和接收的字节数
-    clock_t rcv_clk = 0, flush_snd_clk = clock(), flush_rcv_clk = clock();
+    clock_t flush_snd_clk = clock(), flush_rcv_clk = clock();
+    /* 实时重传次数 */
+    int temp_rtt_num = 0, last_rtt_num = TFTP_TIMEOUT_NUM;  //一个记录最新的重传次数，一个记录上次的重传次数
     while (1) {
         snd_ret = sendto(sockfd, &snd_pkt, fok + 4, 0, server_ptr, server_len);  //发送数据
         snd_size++;
@@ -233,7 +243,7 @@ void upload(ushort mode, char *filename, char *ip_addr) {
         if (snd_pkt.opcode == TFTP_WRQ) fprintf(plog, "[INFO] Send a WRQ packet.\n");
         else fprintf(plog, "[INFO] Send a DATA packet of block %d.\n", block);
 
-        if (clock() - flush_snd_clk > FLUSH_TIME) {  //更新实时流量器
+        if (clock() - flush_rcv_clk > FLUSH_TIME) {  //更新实时流量器
             if (snd_ret > 0) temp_snd += snd_ret;            
             temp_snd2 = temp_snd;
             print_speed(temp_snd, temp_rcv, clock() - flush_snd_clk);
@@ -252,9 +262,16 @@ void upload(ushort mode, char *filename, char *ip_addr) {
         else do {
             rcv_ret = recvfrom(sockfd, &rcv_pkt, TFTP_PKT_SIZE, 0, receive_ptr, &receive_len);  //尝试接收包
             if (rcv_ret > 0) rcv_size++;
+            if (rcv_ret == 4 && rcv_pkt.opcode == htons(TFTP_ACK) && rcv_pkt.block < htons(block)) continue;
         } while (rcv_ret > 0 && receive.sin_port != server.sin_port);
         if (rcv_ret == SOCKET_ERROR) {
             if (WSAGetLastError() == WSAETIMEDOUT) {  //重传
+                temp_rtt_num++;
+                if (temp_rtt_num > (last_rtt_num << 1)) {  //当重传次数超过上次记录的数据后
+                    print_error(ERR_TIMEOUT);
+                    fclose(pfile); fclose(plog);
+                    return;
+                }
                 lost_size++;                
                 fprintf(plog, "[WARNING] Timeout retransmission.\n");
                 continue;
@@ -265,7 +282,9 @@ void upload(ushort mode, char *filename, char *ip_addr) {
                 return;
             }
         }
-        rcv_clk = clock();
+        //当不再重传时更新当前的重传字数
+        last_rtt_num = temp_rtt_num > TFTP_TIMEOUT_NUM ? temp_rtt_num : TFTP_TIMEOUT_NUM;
+        temp_rtt_num = 0; 
 
         /* 记录端口 */
         if (rcv_pkt.block == htons(0) && rcv_pkt.opcode == htons(TFTP_ACK)) {
@@ -283,6 +302,7 @@ void upload(ushort mode, char *filename, char *ip_addr) {
 
         if (rcv_ret > 0 && rcv_ret < 4) {  //bad packet，重传请求
             fprintf(plog, "[WARNING] Bad packet.\n");
+            temp_rtt_num++;
             continue;
         }
         else if (rcv_ret >= 4 && rcv_pkt.opcode == htons(TFTP_ERROR)) {  //TFTP错误
@@ -313,17 +333,11 @@ void upload(ushort mode, char *filename, char *ip_addr) {
                 double bps = (double)snd_bytes / (double)(clock() - clk_start);
                 print_size(file_size, snd_size, rcv_size, lost_size);
                 print_result(clock() - clk_start, bps);
-                fprintf(plog, "Successfully write.\n");
+                fprintf(plog, "Successfully write.\n");                
                 fclose(pfile); fclose(plog);
                 return;
             }
             continue;
-        }
-        else if (clock() - rcv_clk >= TFTP_ERROR_TIMEOUT) {  //回传的ERROR包丢失
-            fprintf(plog, "[ERROR] ERROR packet lost.\n");
-            print_error(ERR_ERR_TMOUT);
-            fclose(pfile); fclose(plog);
-            return;
         }        
     }
 }

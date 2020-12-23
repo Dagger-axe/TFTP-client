@@ -31,7 +31,8 @@ void print_error(ushort error) {
     else if (error == ERR_ERR_TMOUT) printf("ERROR packet lost.\n");
     else if (error == ERR_NO_FILE) printf("No such local file.\n");
     else if (error == ERR_SOCKET_ERR) printf("SOCKET ERROR.\n");
-    else if (error == ERR_NETASCII) printf("Can\'t send by NETASCII mode.\n");
+    else if (error == ERR_NETASCII) printf("Can\'t transferred by NETASCII mode.\n");
+    else if (error == ERR_TIMEOUT) printf("Timeout ERROR.\n");
     else printf("Unknown error.\n");
 }
 

@@ -25,7 +25,7 @@ typedef struct TFTP_PACKET {
     char data[DATA_SIZE];
 } TFTP_PACKET;
 #define TFTP_TIMEOUT 1000
-#define TFTP_ERROR_TIMEOUT 10000
+#define TFTP_TIMEOUT_NUM 5
 #define TFTP_END_SIZE 516
 #define TFTP_FILE_SIZE 512
 #define FLUSH_TIME 1000
