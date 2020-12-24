@@ -14,7 +14,6 @@ int is_netascii(char *filename) {  //读取该文件
     }
     ch = fgetc(pfile);
     while (1) {
-        //printf("file in while\n");
         lch = ch;
         ch = fgetc(pfile);
         if (lch >= 0x20 && lch <= 0x7E) fputc(lch, pf);
@@ -25,6 +24,7 @@ int is_netascii(char *filename) {  //读取该文件
                 fputc(lch, pf);
                 fputc(0, pf);
             }
+            else fputc(lch, pf);
         }
         else if (lch != 0x0D && ch == 0xA) {  //当前非CR，但下一个是LF
             fputc(lch, pf);

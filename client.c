@@ -28,7 +28,7 @@ void start_client(ushort opcode, ushort mode, char *filename, char *ip_addr) {
     server.sin_port = htons(SERVER_PORT_DEFAULT);   //端口号
     /* 设置TIMEOUT时间限制 */
     setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&rcv_timeout, sizeof(int));
-    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&snd_timeout, sizeof(int));
+    setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&snd_timeout, sizeof(int));
 
     if (opcode == TFTP_RRQ) download(mode, filename, ip_addr);  //读请求，下载
     else if (opcode == TFTP_WRQ) {  //写请求，上传
@@ -36,8 +36,7 @@ void start_client(ushort opcode, ushort mode, char *filename, char *ip_addr) {
             if (is_netascii(filename)) {
                 upload(mode, filename, ip_addr);
                 remove("tempfile");  //删除生成的临时文件
-            }
-            else {
+            } else {
                 remove("tempfile");  //仅删除临时文件，原文件可通过OCTET模式传输
                 print_error(ERR_NETASCII);
                 return;
@@ -48,7 +47,6 @@ void start_client(ushort opcode, ushort mode, char *filename, char *ip_addr) {
 }
 
 void download(ushort mode, char *filename, char *ip_addr) {
-    print_begin(filename, ip_addr, mode);
     /* 创建本地同名文件准备写操作 */
     FILE *pfile = fopen(filename, "wb");
     if (!pfile) {
@@ -56,6 +54,7 @@ void download(ushort mode, char *filename, char *ip_addr) {
         fclose(pfile);
         return;
     }
+    print_begin(filename, ip_addr, mode);
     /* 记录日志 */
     FILE *plog = fopen("logfile.log", "wb");
     /* 记录传输时间及文件大小的变量声明 */
@@ -86,10 +85,11 @@ void download(ushort mode, char *filename, char *ip_addr) {
             fclose(pfile); fclose(plog);
             return;
         }
-        if (snd_pkt.opcode == TFTP_RRQ) fprintf(plog, "[INFO] Send a RRQ packet.\n");  //记录日志
+        if (snd_pkt.opcode == htons(TFTP_RRQ)) fprintf(plog, "[INFO] Send a RRQ packet.\n");  //记录日志
         else fprintf(plog, "[INFO] Send a ACK packet of block %d.\n", block);
 
-        if (clock() - flush_rcv_clk > FLUSH_TIME) {  //更新实时流量器
+        /* 更新实时流量器 */
+        if (clock() - flush_rcv_clk > FLUSH_TIME) {
             if (snd_ret > 0) temp_snd += snd_ret;            
             temp_snd2 = temp_snd;
             print_speed(temp_snd, temp_rcv, clock() - flush_snd_clk);
@@ -101,11 +101,11 @@ void download(ushort mode, char *filename, char *ip_addr) {
             temp_snd2 += snd_ret;
         }
 
+        /* 尝试接受包并判断端口、block是否正确 */
         if (block == 1) {
             rcv_ret = recvfrom(sockfd, &rcv_pkt, TFTP_PKT_SIZE, 0, receive_ptr, &receive_len);  //尝试接收包
             if (rcv_ret > 0) rcv_size++;
-        }
-        else do {
+        } else do {
             rcv_ret = recvfrom(sockfd, &rcv_pkt, TFTP_PKT_SIZE, 0, receive_ptr, &receive_len);  //尝试接收包
             if (rcv_ret > 0) rcv_size++;
             if (rcv_ret >= 4 && rcv_pkt.opcode == htons(TFTP_DATA) && rcv_pkt.block < htons(block)) continue;
@@ -113,7 +113,7 @@ void download(ushort mode, char *filename, char *ip_addr) {
         if (rcv_ret == SOCKET_ERROR) {
             if (WSAGetLastError() == WSAETIMEDOUT) {  //重传
                 temp_rtt_num++;
-                if (temp_rtt_num > (last_rtt_num << 1)) {  //当重传次数超过上次记录的数据后
+                if (temp_rtt_num > last_rtt_num) {  //当重传次数超过上次记录的数据后
                     print_error(ERR_TIMEOUT);
                     fclose(pfile); fclose(plog);
                     return;
@@ -121,23 +121,23 @@ void download(ushort mode, char *filename, char *ip_addr) {
                 lost_size++;                
                 fprintf(plog, "[WARNING] Timeout retransmission.\n");
                 continue;
-            }
-            else {
+            } else {
                 print_error(ERR_SOCKET_ERR);
                 fclose(pfile); fclose(plog);
                 return;
             }
         }
-        //当不再重传时更新当前的重传字数
-        last_rtt_num = temp_rtt_num > TFTP_TIMEOUT_NUM ? temp_rtt_num : TFTP_TIMEOUT_NUM;
-        temp_rtt_num = 0; 
+        /* 当不再重传时更新当前的重传次数上限 */
+        last_rtt_num = ((temp_rtt_num << 1) > last_rtt_num) ? (temp_rtt_num << 1) : last_rtt_num;
+        temp_rtt_num = 0;
         
         /* 记录端口号 */
         if (rcv_pkt.block == htons(1) && rcv_pkt.opcode == htons(TFTP_DATA)) {
             server.sin_port = receive.sin_port;
         }
 
-        if (clock() - flush_rcv_clk > FLUSH_TIME) {  //更新实时流量器
+        /* 更新实时流量器 */
+        if (clock() - flush_rcv_clk > FLUSH_TIME) {
             if (rcv_ret > 0) temp_rcv += rcv_ret;
             print_speed(temp_snd2, temp_rcv, clock() - flush_rcv_clk);
             temp_rcv = 0;
@@ -146,7 +146,7 @@ void download(ushort mode, char *filename, char *ip_addr) {
         }
         else if (rcv_ret > 0) temp_rcv += rcv_ret;
 
-        if (rcv_ret > 0) rcv_bytes += rcv_ret;  //增加接收的数据长度
+        rcv_bytes += rcv_ret;  //增加接收的数据长度
         if (rcv_ret > 0 && rcv_ret < 4) {  //bad packet，重传请求
             fprintf(plog, "[WARNING] Bad packet.\n");
             temp_rtt_num++;
@@ -158,11 +158,12 @@ void download(ushort mode, char *filename, char *ip_addr) {
             fclose(pfile); fclose(plog);
             return;
         }
-        else if (rcv_ret >= 4 && rcv_pkt.opcode == htons(TFTP_DATA) && rcv_pkt.block == htons(block)) {
+        else if (rcv_ret >= 4 && rcv_pkt.opcode == htons(TFTP_DATA) && rcv_pkt.block == htons(block)) {            
+            /* 成功接收一个数据，存储并发送ACK */
+            fprintf(plog, "[INFO] Received a DATA packet of block %d.\n", block);
+            fwrite(rcv_pkt.data, 1, rcv_ret - 4, pfile);
+            file_size += rcv_ret - 4;
             if (rcv_ret < TFTP_END_SIZE) {  //当是最后一个data包时，记录并退出
-                fprintf(plog, "[INFO] Receive a DATA packet of block %d.\n", block);
-                fwrite(rcv_pkt.data, 1, rcv_ret - 4, pfile);
-                file_size += rcv_ret - 4;
                 double bps = (double)rcv_bytes / (double)(clock() - clk_start);
                 fclose(pfile); 
                 /* 查看NETASCII模式下文件正确性 */
@@ -170,9 +171,7 @@ void download(ushort mode, char *filename, char *ip_addr) {
                     if (is_netascii(filename)) {
                         remove(filename);  //删除原有文件
                         rename("tempfile", filename);  //重命名临时文件
-                    }
-                    else {
-                        remove(filename);
+                    } else {
                         remove("tempfile");
                         print_error(ERR_NETASCII);
                         fclose(plog);
@@ -185,13 +184,8 @@ void download(ushort mode, char *filename, char *ip_addr) {
                 fclose(plog);
                 return;
             }
-            //成功接收一个数据，存储并发送ACK
-            fprintf(plog, "[INFO] Received a DATA packet of block %d.\n", block);
-            fwrite(rcv_pkt.data, 1, rcv_ret - 4, pfile);
-            file_size += rcv_ret - 4;
             fok = 0;
-            snd_pkt.opcode = htons(TFTP_ACK);
-            snd_pkt.block = rcv_pkt.block;
+            snd_pkt.opcode = htons(TFTP_ACK); snd_pkt.block = rcv_pkt.block;
             block++;
             continue;
         }
@@ -199,7 +193,6 @@ void download(ushort mode, char *filename, char *ip_addr) {
 }
 
 void upload(ushort mode, char *filename, char *ip_addr) {
-    print_begin(filename, ip_addr, mode);
     /* 查找本地文件 */
     FILE *pfile;
     if (mode == NETASCII) pfile = fopen("tempfile", "rb");
@@ -209,6 +202,7 @@ void upload(ushort mode, char *filename, char *ip_addr) {
         fclose(pfile);
         return;
     }
+    print_begin(filename, ip_addr, mode);
     /* 记录日志 */
     FILE *plog = fopen("logfile.log", "wb");
     /* 创建计时器和传输量 */
@@ -240,10 +234,11 @@ void upload(ushort mode, char *filename, char *ip_addr) {
             return;
         } 
         snd_bytes += snd_ret;
-        if (snd_pkt.opcode == TFTP_WRQ) fprintf(plog, "[INFO] Send a WRQ packet.\n");
+        if (snd_pkt.opcode == htons(TFTP_WRQ)) fprintf(plog, "[INFO] Send a WRQ packet.\n");
         else fprintf(plog, "[INFO] Send a DATA packet of block %d.\n", block);
 
-        if (clock() - flush_rcv_clk > FLUSH_TIME) {  //更新实时流量器
+        /* 更新实时流量器 */
+        if (clock() - flush_rcv_clk > FLUSH_TIME) {
             if (snd_ret > 0) temp_snd += snd_ret;            
             temp_snd2 = temp_snd;
             print_speed(temp_snd, temp_rcv, clock() - flush_snd_clk);
@@ -255,11 +250,11 @@ void upload(ushort mode, char *filename, char *ip_addr) {
             temp_snd2 += snd_ret;
         }
 
+        /* 尝试接受包并判断端口、block是否正确 */
         if (block == 0) {
             rcv_ret = recvfrom(sockfd, &rcv_pkt, TFTP_PKT_SIZE, 0, receive_ptr, &receive_len);  //尝试接收包
             if (rcv_ret > 0) rcv_size++;
-        }
-        else do {
+        } else do {
             rcv_ret = recvfrom(sockfd, &rcv_pkt, TFTP_PKT_SIZE, 0, receive_ptr, &receive_len);  //尝试接收包
             if (rcv_ret > 0) rcv_size++;
             if (rcv_ret == 4 && rcv_pkt.opcode == htons(TFTP_ACK) && rcv_pkt.block < htons(block)) continue;
@@ -282,8 +277,8 @@ void upload(ushort mode, char *filename, char *ip_addr) {
                 return;
             }
         }
-        //当不再重传时更新当前的重传字数
-        last_rtt_num = temp_rtt_num > TFTP_TIMEOUT_NUM ? temp_rtt_num : TFTP_TIMEOUT_NUM;
+        /* 当不再重传时更新当前的重传字数 */
+        last_rtt_num = ((temp_rtt_num << 1) > last_rtt_num) ? (temp_rtt_num << 1) : last_rtt_num;
         temp_rtt_num = 0; 
 
         /* 记录端口 */
@@ -291,7 +286,8 @@ void upload(ushort mode, char *filename, char *ip_addr) {
             server.sin_port = receive.sin_port;
         }
 
-        if (clock() - flush_rcv_clk > FLUSH_TIME) {  //更新实时流量器
+        /* 更新实时流量器 */
+        if (clock() - flush_rcv_clk > FLUSH_TIME) {
             if (rcv_ret > 0) temp_rcv += rcv_ret;
             print_speed(temp_snd2, temp_rcv, clock() - flush_rcv_clk);
             temp_rcv = 0;
@@ -315,7 +311,7 @@ void upload(ushort mode, char *filename, char *ip_addr) {
             fok = fread(snd_pkt.data, 1, TFTP_FILE_SIZE, pfile);
             file_size += fok;
             fprintf(plog, "[INFO] Received a ACK packet of block %d.\n", block);
-            //成功接收ACK并继续传数据DATA
+            /* 成功接收ACK并继续传数据DATA */
             snd_pkt.opcode = htons(TFTP_DATA);
             block++;
             snd_pkt.block = htons(block);           

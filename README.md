@@ -109,7 +109,7 @@ typedef struct TFTP_PACKET {
 
 ```bash
 tc qdisc add dev wlp3s0 root netem loss 30%
-tc qdisc add dev eth0 root netem delay 100ms 10ms 30%
+tc qdisc add dev wlp3s0 root netem delay 100ms 10ms 30%
 ```
 
 #### 结果
