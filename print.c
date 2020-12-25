@@ -51,7 +51,7 @@ void print_speed(int snd, int rcv, int clk) {
     if (clk < 1) clk = 1;
     double res_snd = (double)snd / (double)clk;
     double res_rcv = (double)rcv / (double)clk;
-    printf("\rSend speed:%-6.2lfKbps      Receive speed:%-6.2lfKbps", res_snd, res_rcv);
+    printf("\rSend speed:%-6.2lfKBps      Receive speed:%-6.2lfKBps", res_snd, res_rcv);
 }
 
 void print_size(int file, int snd, int rcv, int lost) {
@@ -61,5 +61,5 @@ void print_size(int file, int snd, int rcv, int lost) {
 
 void print_result(int tm, double bps) {    
     printf("Total time:          %dms\n", tm);
-    printf("Transmission speed:  %.2lfKbps\n", bps);
+    printf("Transmission speed:  %.2lfKBps\n", bps);
 }
